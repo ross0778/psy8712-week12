@@ -1,0 +1,17 @@
+---
+title: "week12"
+output: html_document
+---
+
+# Script Settings and Resources
+```{r}
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+library(tidyverse)
+library(tm)
+library(textstem)
+library(RedditExtractoR)
+library(stm)
+library(wordcloud)
+library(RColorBrewer)
+```
+
