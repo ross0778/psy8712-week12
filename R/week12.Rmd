@@ -75,6 +75,13 @@ compare_them <- function(corpus1, corpus2) {
 compare_them(io_corpus_original, io_corpus)
 ```
 
+```{r}
+myTokenizer <- function(x) {
+  NGramTokenizer(x, Weka_control(min = 1, max = 2))
+} #this makes both the unigrams and bigrams
+io_dtm <- DocumentTermMatrix(io_corpus, control = list(tokenize = myTokenizer)) #this converts the corpus into a matrix and we use the tokenizer we created earlier
+io_slim_dtm <- removeSparseTerms(io_dtm, .995) #creates the slim dtm with the proper threshold so that the ratio is maintained
+```
 
 
 
