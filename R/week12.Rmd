@@ -15,41 +15,65 @@ library(wordcloud)
 library(RColorBrewer)
 library(httr)
 library(jsonlite)
+library(RWeka)
+library(qdap)
 ```
 
 # Data Import and Cleaning
 ```{r}
-url <- "https://www.reddit.com/r/IOPsychology/.json?limit=100" #gives JSON format
-after <- NULL #first request gets the first page
-each_post <- list() #empty list to store the posts from each page
-
-repeat { #starts loop
-  after_param <- ifelse(is.null(after), "", paste0("&after=", after)) #makes the pagination parameter and tells reddit which page to return next
-  full_url <- paste0(url, after_param) #combines URL with after_param
-  response <- fromJSON(full_url) #makes HTTP request and parses JSON response
-  posts <- response$data$children$data #gets the actual data
-  each_post <- append(each_post, list(posts)) #this adds the page's posts to the list, append() adds it all as one instead of individually
-  after <- response$data$after #updates pagination for the next iteration
-  if (is.null(after)) break #breaks if there are no more pages
-  if (length(each_post) >= 6) break #breaks after 6 pages just in case
-  Sys.sleep(2) #pauses 2 seconds
-}
-```
-
-
-```{r}
-week12_tbl <- bind_rows(each_post) %>% #binds all the pages' data into a single data frame
-  select(title, ups, created_utc) %>% #selects for just the title, upvotes, and Unix timestamp
-  mutate(created_utc = as.POSIXct(created_utc, origin = "1970-01-01")) %>% #prepping the timestamp so we can use it to identify a year of posts
-  filter(created_utc > Sys.time() - as.difftime(365, units = "days")) %>% #only keeps the posts from the last year
-  select(-created_utc) %>% #gets rid of the created_utc column
-  write_csv("../data/io_reddit_data.csv") #writes the csv
+# url <- "https://www.reddit.com/r/IOPsychology/.json?limit=100" #gives JSON format
+# after <- NULL #first request gets the first page
+# each_post <- list() #empty list to store the posts from each page
+# 
+# repeat { #starts loop
+#   after_param <- ifelse(is.null(after), "", paste0("&after=", after)) #makes the pagination parameter and tells reddit which page to return next
+#   full_url <- paste0(url, after_param) #combines URL with after_param
+#   response <- fromJSON(full_url) #makes HTTP request and parses JSON response
+#   posts <- response$data$children$data #gets the actual data
+#   each_post <- append(each_post, list(posts)) #this adds the page's posts to the list, append() adds it all as one instead of individually
+#   after <- response$data$after #updates pagination for the next iteration
+#   if (is.null(after)) break #breaks if there are no more pages
+#   if (length(each_post) >= 6) break #breaks after 6 pages just in case
+#   Sys.sleep(2) #pauses 2 seconds
+# }
+# ```
+# 
+# 
+# ```{r}
+# week12_tbl <- bind_rows(each_post) %>% #binds all the pages' data into a single data frame
+#   select(title, ups, created_utc) %>% #selects for just the title, upvotes, and Unix timestamp
+#   mutate(created_utc = as.POSIXct(created_utc, origin = "1970-01-01")) %>% #prepping the timestamp so we can use it to identify a year of posts
+#   filter(created_utc > Sys.time() - as.difftime(365, units = "days")) %>% #only keeps the posts from the last year
+#   select(-created_utc) %>% #gets rid of the created_utc column
+#   write_csv("../data/io_reddit_data.csv") #writes the csv
 
 week12_tbl <- read_csv("../data/io_reddit_data.csv") #reads in the csv
 ```
 
 
+```{r}
+io_corpus_original <- VCorpus(VectorSource(week12_tbl$title)) #makes a volatile corpus from the title vector
+io_corpus <- io_corpus_original %>% 
+  tm_map(content_transformer(replace_abbreviation)) %>% 
+  tm_map(content_transformer(replace_contraction)) %>% 
+  tm_map(content_transformer(str_to_lower)) %>% 
+  tm_map(removePunctuation) %>% 
+  tm_map(removeNumbers) %>% 
+  tm_map(content_transformer(lemmatize_strings)) %>% 
+  tm_map(removeWords,
+         c(stopwords("en"),
+           "industrial", "organizational", "psychology", "psych", "psychologists", "psychologist", "i-o", "i/o", "io")) %>% 
+  tm_map(stripWhitespace)
+```
 
+```{r}
+compare_them <- function(corpus1, corpus2) {
+  c <- sample(1:length(corpus1), 1)
+  print(corpus1[[c]]$content)
+  print(corpus2[[c]]$content)
+}
+compare_them(io_corpus_original, io_corpus)
+```
 
 
 
