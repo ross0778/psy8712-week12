@@ -244,6 +244,8 @@ table1_tbl <- tibble( #creates tibble so we can easily compare the two models
 mutate(across(c(cv_rsq, ho_rsq), ~ formatC(round(.x, 2), format = "f", digits = 2) %>%
                   str_remove("^0"))) #this rounds all values to 2 decimal places using formatC() and gets rid of the leading zeros using str_remove() and regex
 table1_tbl
+
+# Based on the results of the CV and holdout R^2 values between the first model (tokens only) and the second model (topics and tokens), it appears that the tokens only model has a slightly higher R^2 value across the board. This means that adding topics to the model does not improve the upvote prediction beyond tokens alone. However, the R^2 values for both models seem to generally be very small.
 ```
 
 
