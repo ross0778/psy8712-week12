@@ -20,6 +20,9 @@ library(qdap)
 library(slam)
 library(parallel)
 library(doParallel)
+library(psych)
+library(caret)
+library(ranger)
 ```
 
 # Data Import and Cleaning
@@ -125,6 +128,7 @@ topicCorr(topic_model) #this gives the correlations between the topic models
 plot(topicCorr(topic_model)) #this just plots the correlations
 theta <- topic_model$theta #this gives the probabilities
 ```
+
 ```{r}
 topic_labels <- c("Entry-Level Career", "Weekly Discussions", "Field Advice", "PhD Preparation", "Education and Skill Requirements", "Master's Degree Planning", "Management and Organizational Issues")
 
@@ -136,6 +140,110 @@ topic_labels <- c("Entry-Level Career", "Weekly Discussions", "Field Advice", "P
 
 
 ```{r}
-
+topics_tbl <- tibble( #creates tibble
+  doc_id = ids, #original line numbers from week12_tbl
+  original = week12_tbl$title[ids], #original post titles by id
+  topic = apply(theta, 1, which.max), #the lda topic number
+  topic_label = topic_labels[apply(theta, 1, which.max)], #the topic label according to number
+  probability = apply(theta, 1, max), #the probability the doc belong to the topic
+  upvotes = week12_tbl$ups[ids] #the upvotes by id
+)
+topics_tbl
 ```
+
+# Visualization
+```{r}
+wordCounts <- colSums(as.matrix(io_dtm)) #created the wordcloud with a max of 50 words
+wordNames <- names(wordCounts)
+
+set.seed(42)
+wordcloud::wordcloud(
+  wordNames,
+  wordCounts,
+  max.words = 50
+)
+
+tibble(wordNames, wordCounts) %>%  #added this code to visualize top words directly, just out of curiosity
+  arrange(desc(wordCounts)) %>% 
+  top_n(20) %>% 
+  mutate(wordNames = reorder(wordNames, wordCounts)) %>% 
+  ggplot(aes(x = wordNames, y = wordCounts)) + geom_col() + coord_flip()
+
+# Interpretation - the wordcloud shows that the largest words, such as "advice", "read", "think", "discussion", and "iopsychology" are the top discussed topics in the subreddit. This wordcloud is a lot more helpful than if we hadn't removed the extra IO-related stopwords.
+```
+# Machine Learning
+```{r}
+token_df <- dtm_tbl %>% #this builds the tokens-alone dataset, use the earlier created dtm_tbl
+  mutate(upvotes = topics_tbl$upvotes)
+topic_dummies <- dummy.code(topics_tbl$topic) %>% #as specified in class, we need to dummy code categorical predictors
+  as_tibble() %>% 
+  rename_with(~ paste0("topic_", .))
+
+topics_df <- token_df %>% 
+  bind_cols(topic_dummies)
+```
+
+
+```{r}
+set.seed(42)
+train_index <- createDataPartition(token_df$upvotes, p = 0.8, list = FALSE)
+
+train_token <- token_df[train_index, ]
+test_token <- token_df[-train_index, ]
+train_topic_token <- topics_df[train_index, ]
+test_topic_token <- topics_df[-train_index, ]
+```
+
+```{r}
+# Model 1 - tokens only
+set.seed(42)
+tokens_model <- train(
+  upvotes ~.,
+  data = train_token,
+  method = "ranger",
+  tuneLength = 3,
+  preProcess = c("nzv", "center", "scale"),
+  trControl = trainControl(
+    method = "cv",
+    number = 10,
+    verboseIter = TRUE
+  )
+)
+
+# Model 2 - tokens and topics
+set.seed(42)
+topics_tokens_model <- train(
+  upvotes ~ .,
+  data = train_topic_token,
+  method = "ranger",
+  tuneLength = 3,
+  preProcess = c("nzv", "center", "scale"),
+  trControl = trainControl(
+    method = "cv",
+    number = 10,
+    verboseIter = TRUE
+  )
+)
+
+pred1 <- predict(tokens_model, newdata = test_token)
+pred2 <- predict(topics_tokens_model, newdata = test_topic_token)
+```
+
+```{r}
+table1_tbl <- tibble( #creates tibble so we can easily compare the two models
+  model = c("Tokens Only", "Tokens & Topics"), #specifies algo used
+  cv_rsq = c(
+    max(tokens_model$results$Rsquared, na.rm = TRUE),
+    max(topics_tokens_model$results$Rsquared, na.rm = TRUE)
+  ),
+  ho_rsq = c(
+    postResample(pred1, test_token$upvotes)["Rsquared"], #used postResample() to find the holdout R^2
+    postResample(pred2, test_topic_token$upvotes)["Rsquared"]
+  )
+) %>% 
+mutate(across(c(cv_rsq, ho_rsq), ~ formatC(round(.x, 2), format = "f", digits = 2) %>%
+                  str_remove("^0"))) #this rounds all values to 2 decimal places using formatC() and gets rid of the leading zeros using str_remove() and regex
+table1_tbl
+```
+
 
