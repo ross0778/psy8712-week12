@@ -1,7 +1,14 @@
 ---
 title: "week12"
+author: "Delaney Ross"
+date: "`r Sys.Date()`"
 output: html_document
 ---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
 
 # Script Settings and Resources
 ```{r}
@@ -60,16 +67,16 @@ week12_tbl <- read_csv("../data/io_reddit_data.csv") #reads in the csv
 ```{r}
 io_corpus_original <- VCorpus(VectorSource(week12_tbl$title)) #makes a volatile corpus from the title vector
 io_corpus <- io_corpus_original %>% 
-  tm_map(content_transformer(replace_abbreviation)) %>% 
+  tm_map(content_transformer(replace_abbreviation)) %>% #abbreviations and contractions were expanded so that any variations in language wouldn't result in broken-up tokens
   tm_map(content_transformer(replace_contraction)) %>% 
-  tm_map(content_transformer(str_to_lower)) %>% 
-  tm_map(removePunctuation) %>% 
+  tm_map(content_transformer(str_to_lower)) %>% #text was then converted to lowercase to standardize the tokens
+  tm_map(removePunctuation) %>% #then punctuation and numbers removed so they don't interfere with the tokens
   tm_map(removeNumbers) %>% 
-  tm_map(content_transformer(lemmatize_strings)) %>% 
-  tm_map(removeWords,
+  tm_map(content_transformer(lemmatize_strings)) %>% #lemmatization was applied after the prior steps to ensure words had been reduced to their basic dictionary form after other interference had been removed
+  tm_map(removeWords, #removed last to ensure accuracy
          c(stopwords("en"),
            "industrial", "organizational", "psychology", "psych", "psychologists", "psychologist", "i-o", "i/o", "io")) %>% 
-  tm_map(stripWhitespace)
+  tm_map(stripWhitespace) #final step to avoid formatting issues
 ```
 
 ```{r}
@@ -244,8 +251,9 @@ table1_tbl <- tibble( #creates tibble so we can easily compare the two models
 mutate(across(c(cv_rsq, ho_rsq), ~ formatC(round(.x, 2), format = "f", digits = 2) %>%
                   str_remove("^0"))) #this rounds all values to 2 decimal places using formatC() and gets rid of the leading zeros using str_remove() and regex
 table1_tbl
+write_csv(table1_tbl, "../out/table1.csv")
 
-# Based on the results of the CV and holdout R^2 values between the first model (tokens only) and the second model (topics and tokens), it appears that the tokens only model has a slightly higher R^2 value across the board. This means that adding topics to the model does not improve the upvote prediction beyond tokens alone. However, the R^2 values for both models seem to generally be very small.
+# Based on the results of the CV and holdout R^2 values between the first model (tokens only) and the second model (topics and tokens), it appears that the tokens only model has a slightly higher R^2 value across the board. This means that adding topics to the model does not improve the upvote prediction beyond tokens alone. However, the R^2 values for both models seem to generally be very small, so the overall predictive performance of both models was very low.
 ```
 
 
