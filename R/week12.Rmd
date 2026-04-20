@@ -17,6 +17,9 @@ library(httr)
 library(jsonlite)
 library(RWeka)
 library(qdap)
+library(slam)
+library(parallel)
+library(doParallel)
 ```
 
 # Data Import and Cleaning
@@ -81,7 +84,58 @@ myTokenizer <- function(x) {
 } #this makes both the unigrams and bigrams
 io_dtm <- DocumentTermMatrix(io_corpus, control = list(tokenize = myTokenizer)) #this converts the corpus into a matrix and we use the tokenizer we created earlier
 io_slim_dtm <- removeSparseTerms(io_dtm, .995) #creates the slim dtm with the proper threshold so that the ratio is maintained
+
+sum(slam::row_sums(io_slim_dtm) == 0) #this tells me that I have 37 empty documents, so I need to fix this
+
+row_total <- slam::row_sums(io_slim_dtm)
+keep_row <- row_total > 0 #makes a logical vector, is true for documents that have above 0 tokens
+io_slim_dtm <- io_slim_dtm[keep_row, ] #filters the slim dtm to keep only non-empty documents
+ids <- as.integer(rownames(io_slim_dtm)) #recovers original doc ids
+sum(slam::row_sums(io_slim_dtm) == 0) #this now shows 0 empty documents, so the problem is fixed
+dtm_tbl <- io_slim_dtm %>% 
+  as.matrix() %>% 
+  as_tibble() #converts to tibble for later use
+```
+
+# Analysis
+```{r}
+dtm_lda <- readCorpus(io_slim_dtm, type = "slam") #converts to usable form for lda
+num_cores <- detectCores() - 1
+registerDoParallel(num_cores) #using parallelization as recommended, as this is CPU intense
+kresult <- searchK(
+  dtm_lda$documents,
+  dtm_lda$vocab,
+  K = seq(2, 20, by = 2)
+)
+stopImplicitCluster()
+par(mar = c(5, 4, 2, 2)) #had to adjust margins to fix the error, the figure margins were too large
+plot(kresult) #based on these plots, it appears that the "elbow" like we talked about in class is about 7. Therefore, I will use 7 topics in the model.
+```
+
+```{r}
+topic_model <- stm(dtm_lda$documents, dtm_lda$vocab, 7) #this fits the final model
+```
+
+```{r}
+#ran these lines from the slides to explore the lda
+labelTopics(topic_model, n = 10) #this gives the most representative words for each topic
+findThoughts(topic_model, texts = week12_tbl$title[ids], n = 3) #gives the three most representative thoughts for each topic
+plot(topic_model, type = "summary", n = 5) #this plots the topic models
+topicCorr(topic_model) #this gives the correlations between the topic models
+plot(topicCorr(topic_model)) #this just plots the correlations
+theta <- topic_model$theta #this gives the probabilities
+```
+```{r}
+topic_labels <- c("Entry-Level Career", "Weekly Discussions", "Field Advice", "PhD Preparation", "Education and Skill Requirements", "Master's Degree Planning", "Management and Organizational Issues")
+
+#Reflection Question 1 - For the four plots given by plot(kresult), it made sense to use the "elbow" method described in class, similar to what we use in scree plots. This uses the point at which improvements in model fit begin to level off as K increased. With these plots, this point appeared to be about K = 7. Therefore, I chose 7 topics, which should be a number of topics that captures the main structure of the corpus while not being too complicated.
+
+#Reflection Question 2 - I first focused on the FREX (frequent and exclusive) and lift words from labelTopics() to sketch out my label ideas. Then, I used findThoughts to check if my label ideas really worked with the example posts. I also used the summary plot to help decide how encompassing the topic label should be. For example, for topic 1, some words included "graduate, next step, entry level, employee". Then, I checked findThoughts, which showed me that some of the most representative thoughts include "Entry level jobs for non graduate degree holders in IO Psych?" and "Do entry level opportunities in IO exist anymore?". Therefore, I know my topic label makes sense. Then, I checked the summary plot to see how broad or specific I should be in the label. The topic seems fairly focused according to the plot, so I can be pretty narrow in the topic label. This is an example of my logic in determining the topic labels for each topic.
 ```
 
 
+
+```{r}
+
+```
 
